@@ -13,15 +13,18 @@ This downloads `jojo` to `~/.local/bin/`, adds a cron entry that runs every minu
 ## Usage
 
 ```bash
-jojo set 75     # persist threshold (1-99)
-jojo get        # show current threshold
-jojo status     # show usage, threshold, state
-jojo check      # run the check manually
-jojo uninstall  # remove binary and cron entry
-jojo help       # list all commands
+jojo set threshold 75   # persist threshold (1-99, percent)
+jojo set delay 5        # persist check interval (1-59, minutes)
+jojo get                # show both values
+jojo status             # show usage, threshold, delay, state
+jojo check              # run the check manually
+jojo uninstall          # remove binary and cron entry
+jojo help               # list all commands
 ```
 
-Default threshold is **80%**. For one-off overrides: `RAM_THRESHOLD=1 jojo check`.
+Defaults: **threshold 80%**, **delay 1 minute**. Changing `delay` auto-updates your cron entry.
+
+One-off override: `RAM_THRESHOLD=1 jojo check`.
 
 ## How it works
 
