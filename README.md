@@ -1,6 +1,8 @@
 # jojo
 
-> **Demo:** [jojo_demo.mp4](jojo_demo.mp4) — watch the notification fire when RAM crosses the threshold
+<p align="center">
+  <video src="https://github.com/webtaken/jojo/blob/main/jojo_demo.mp4" />
+</p>
 
 Desktop notification (with sound) when RAM usage crosses a threshold. Works on **Linux** and **macOS**. Edge-triggered — fires **once** per crossing, then resets when RAM drops back below.
 
