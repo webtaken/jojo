@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/ram-monitor"
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/jojo"
 CONFIG_FILE="$CONFIG_DIR/config"
-STATE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/ram-monitor"
+STATE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/jojo"
 STATE_FILE="$STATE_DIR/state"
 DEFAULT_THRESHOLD=80
+INSTALL_DIR="$HOME/.local/bin"
+INSTALL_PATH="$INSTALL_DIR/jojo"
 
 load_threshold() {
   if [[ -n "${RAM_THRESHOLD:-}" ]]; then
@@ -79,15 +81,69 @@ cmd_status() {
   printf 'usage:     %s%%\nthreshold: %s%%\nstate:     %s\n' "$usage" "$threshold" "$state"
 }
 
+cmd_install() {
+  local src
+  src="$(readlink -f "$0")"
+
+  mkdir -p "$INSTALL_DIR"
+
+  if [[ "$src" != "$INSTALL_PATH" ]]; then
+    cp "$src" "$INSTALL_PATH"
+    chmod +x "$INSTALL_PATH"
+    echo "Installed: $INSTALL_PATH"
+  fi
+
+  local cron_line="* * * * * $INSTALL_PATH check >/dev/null 2>&1"
+  local existing
+  existing="$(crontab -l 2>/dev/null | grep -vF "$INSTALL_PATH" || true)"
+  if [[ -n "$existing" ]]; then
+    printf '%s\n%s\n' "$existing" "$cron_line" | crontab -
+  else
+    printf '%s\n' "$cron_line" | crontab -
+  fi
+  echo "Cron entry added (runs every minute)."
+
+  case ":$PATH:" in
+    *":$INSTALL_DIR:"*) ;;
+    *)
+      echo ""
+      echo "NOTE: $INSTALL_DIR is not on your PATH."
+      echo "Add this line to ~/.bashrc (or ~/.zshrc):"
+      echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+      echo "Then restart your shell or: source ~/.bashrc"
+      ;;
+  esac
+
+  echo ""
+  echo "Done. Try: jojo status"
+}
+
+cmd_uninstall() {
+  local filtered
+  filtered="$(crontab -l 2>/dev/null | grep -vF "$INSTALL_PATH" || true)"
+  if [[ -n "$filtered" ]]; then
+    printf '%s\n' "$filtered" | crontab -
+  else
+    crontab -r 2>/dev/null || true
+  fi
+  rm -f "$INSTALL_PATH"
+  rm -f "$STATE_FILE"
+  echo "Uninstalled jojo and removed cron entry."
+}
+
 cmd_help() {
   cat <<EOF
-Usage: ram-monitor.sh [command]
+jojo — RAM threshold monitor with desktop notifications
+
+Usage: jojo [command]
 
 Commands:
   check           Run the threshold check (default; called by cron)
-  set <percent>   Persist threshold (1-99). Example: set 75
+  set <percent>   Persist threshold (1-99). Example: jojo set 75
   get             Print the current threshold
   status          Print current usage, threshold, and state
+  install         Install to ~/.local/bin and add cron entry
+  uninstall       Remove from ~/.local/bin and remove cron entry
   help            Show this message
 
 Environment:
@@ -100,6 +156,8 @@ case "${1:-check}" in
   set)             shift; cmd_set "${1:-}" ;;
   get)             cmd_get ;;
   status)          cmd_status ;;
+  install)         cmd_install ;;
+  uninstall)       cmd_uninstall ;;
   help|-h|--help)  cmd_help ;;
-  *) echo "unknown command: $1" >&2; cmd_help >&2; exit 1 ;;
+  *) echo "unknown command: $1" >&2; echo "" >&2; cmd_help >&2; exit 1 ;;
 esac
