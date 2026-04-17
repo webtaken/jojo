@@ -30,9 +30,10 @@ One-off override: `RAM_THRESHOLD=1 jojo check`.
 
 - Reads `MemTotal` and `MemAvailable` from `/proc/meminfo` and computes real memory pressure.
 - Stores last seen state (`OK` / `ALERT`) in `~/.cache/jojo/state`.
-- Only sends `notify-send` on the `OK → ALERT` transition — no repeat spam.
+- Only sends `notify-send` + plays `fahhh.mp3` on the `OK → ALERT` transition — no repeat spam.
 
 ## Requirements
 
 - Linux (tested on Ubuntu)
 - `awk`, `crontab`, `notify-send` (the last one comes from `libnotify-bin` on Debian/Ubuntu)
+- Optional (for sound): one of `ffplay` (`ffmpeg`), `mpg123`, or `paplay` — the notification still works without sound

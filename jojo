@@ -5,6 +5,8 @@ CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/jojo"
 CONFIG_FILE="$CONFIG_DIR/config"
 STATE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/jojo"
 STATE_FILE="$STATE_DIR/state"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/jojo"
+SOUND_FILE="fahhh.mp3"
 DEFAULT_THRESHOLD=80
 DEFAULT_DELAY=1
 INSTALL_DIR="$HOME/.local/bin"
@@ -57,6 +59,28 @@ read_usage() {
        END              {printf("%d", (total-avail)*100/total)}' /proc/meminfo
 }
 
+play_alert_sound() {
+  local sound
+  for candidate in \
+      "$DATA_DIR/$SOUND_FILE" \
+      "$(dirname "$(readlink -f "$0")")/$SOUND_FILE"; do
+    if [[ -f "$candidate" ]]; then
+      sound="$candidate"; break
+    fi
+  done
+  [[ -z "${sound:-}" ]] && return 0
+
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+  if command -v ffplay >/dev/null 2>&1; then
+    (ffplay -nodisp -autoexit -loglevel quiet "$sound" >/dev/null 2>&1 &)
+  elif command -v mpg123 >/dev/null 2>&1; then
+    (mpg123 -q "$sound" >/dev/null 2>&1 &)
+  elif command -v paplay >/dev/null 2>&1; then
+    (paplay "$sound" >/dev/null 2>&1 &)
+  fi
+}
+
 is_installed() {
   [[ -x "$INSTALL_PATH" ]] && crontab -l 2>/dev/null | grep -qF "$INSTALL_PATH"
 }
@@ -100,6 +124,7 @@ cmd_check() {
   if [[ "$new_state" != "$prev_state" ]]; then
     if [[ "$new_state" == "ALERT" ]]; then
       notify-send -u critical "RAM high" "Memory usage at ${usage}% (threshold ${threshold}%)"
+      play_alert_sound
     fi
     echo "$new_state" > "$STATE_FILE"
   fi
@@ -163,8 +188,9 @@ cmd_status() {
 }
 
 cmd_install() {
-  local src
+  local src src_dir
   src="$(readlink -f "$0")"
+  src_dir="$(dirname "$src")"
 
   mkdir -p "$INSTALL_DIR"
 
@@ -172,6 +198,12 @@ cmd_install() {
     cp "$src" "$INSTALL_PATH"
     chmod +x "$INSTALL_PATH"
     echo "Installed: $INSTALL_PATH"
+  fi
+
+  if [[ -f "$src_dir/$SOUND_FILE" ]]; then
+    mkdir -p "$DATA_DIR"
+    cp "$src_dir/$SOUND_FILE" "$DATA_DIR/$SOUND_FILE"
+    echo "Installed alert sound: $DATA_DIR/$SOUND_FILE"
   fi
 
   update_cron
@@ -202,6 +234,7 @@ cmd_uninstall() {
   fi
   rm -f "$INSTALL_PATH"
   rm -f "$STATE_FILE"
+  rm -rf "$DATA_DIR"
   echo "Uninstalled jojo and removed cron entry."
 }
 
