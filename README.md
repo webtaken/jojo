@@ -22,14 +22,15 @@ If `~/.local/bin` isn't on your `PATH`, the installer will tell you how to add i
 ```bash
 jojo set threshold 75   # persist threshold (1-99, percent)
 jojo set delay 5        # persist check interval (1-59, minutes)
-jojo get                # show both values
-jojo status             # show usage, threshold, delay, state
+jojo set repeat 15      # re-notify every N min while above threshold (0 disables)
+jojo get                # show all values
+jojo status             # show usage, threshold, delay, repeat, state
 jojo check              # run the check manually
-jojo uninstall          # remove binary and cron entry
+jojo uninstall          # remove binary and scheduler entry
 jojo help               # list all commands
 ```
 
-Defaults: **threshold 80%**, **delay 1 minute**. Changing `delay` auto-updates your cron entry.
+Defaults: **threshold 80%**, **delay 1 minute**, **repeat 10 minutes**. Changing `delay` auto-updates your scheduler entry. Set `repeat 0` to restore edge-only behavior (one notification per crossing).
 
 One-off override: `RAM_THRESHOLD=1 jojo check`.
 

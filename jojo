@@ -9,6 +9,7 @@ DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/jojo"
 SOUND_FILE="fahhh.mp3"
 DEFAULT_THRESHOLD=80
 DEFAULT_DELAY=1
+DEFAULT_REPEAT=10
 INSTALL_DIR="$HOME/.local/bin"
 INSTALL_PATH="$INSTALL_DIR/jojo"
 LAUNCHD_LABEL="com.webtaken.jojo"
@@ -61,19 +62,26 @@ get_delay() {
   read_config_value DELAY_MINUTES "$DEFAULT_DELAY"
 }
 
+get_repeat() {
+  read_config_value REPEAT_MINUTES "$DEFAULT_REPEAT"
+}
+
 write_config() {
   local key="$1" value="$2"
-  local t d
+  local t d r
   t=$(read_config_value THRESHOLD "$DEFAULT_THRESHOLD")
   d=$(read_config_value DELAY_MINUTES "$DEFAULT_DELAY")
+  r=$(read_config_value REPEAT_MINUTES "$DEFAULT_REPEAT")
   case "$key" in
-    THRESHOLD)     t="$value" ;;
-    DELAY_MINUTES) d="$value" ;;
+    THRESHOLD)      t="$value" ;;
+    DELAY_MINUTES)  d="$value" ;;
+    REPEAT_MINUTES) r="$value" ;;
   esac
   mkdir -p "$CONFIG_DIR"
   {
-    printf 'THRESHOLD=%s\n'     "$t"
-    printf 'DELAY_MINUTES=%s\n' "$d"
+    printf 'THRESHOLD=%s\n'      "$t"
+    printf 'DELAY_MINUTES=%s\n'  "$d"
+    printf 'REPEAT_MINUTES=%s\n' "$r"
   } > "$CONFIG_FILE"
 }
 
@@ -206,13 +214,21 @@ remove_scheduler() {
 }
 
 cmd_check() {
-  local threshold usage prev_state new_state
+  local threshold repeat usage prev_state last_alert new_state now should_notify line
   threshold=$(get_threshold)
+  repeat=$(get_repeat)
   mkdir -p "$STATE_DIR"
   usage=$(read_usage)
+  now=$(date +%s)
 
   prev_state="OK"
-  [[ -f "$STATE_FILE" ]] && prev_state=$(<"$STATE_FILE")
+  last_alert=0
+  if [[ -f "$STATE_FILE" ]]; then
+    { IFS= read -r line && prev_state="$line"
+      IFS= read -r line && last_alert="$line"
+    } < "$STATE_FILE" || true
+  fi
+  [[ "$last_alert" =~ ^[0-9]+$ ]] || last_alert=0
 
   if (( usage >= threshold )); then
     new_state="ALERT"
@@ -220,13 +236,23 @@ cmd_check() {
     new_state="OK"
   fi
 
-  if [[ "$new_state" != "$prev_state" ]]; then
-    if [[ "$new_state" == "ALERT" ]]; then
-      send_notification "$usage" "$threshold"
-      play_alert_sound
+  should_notify=0
+  if [[ "$new_state" == "ALERT" ]]; then
+    if [[ "$prev_state" != "ALERT" ]]; then
+      should_notify=1
+    elif (( repeat > 0 )) && (( now - last_alert >= repeat * 60 )); then
+      should_notify=1
     fi
-    echo "$new_state" > "$STATE_FILE"
   fi
+
+  if (( should_notify )); then
+    send_notification "$usage" "$threshold"
+    play_alert_sound
+    last_alert=$now
+  fi
+
+  [[ "$new_state" == "OK" ]] && last_alert=0
+  printf '%s\n%s\n' "$new_state" "$last_alert" > "$STATE_FILE"
 }
 
 cmd_set() {
@@ -252,12 +278,24 @@ cmd_set() {
         echo "$(scheduler_name) entry updated."
       fi
       ;;
+    repeat)
+      if [[ ! "$value" =~ ^[0-9]+$ ]] || (( value > 1440 )); then
+        echo "error: repeat must be an integer 0-1440 (minutes; 0 disables)" >&2
+        exit 1
+      fi
+      write_config REPEAT_MINUTES "$value"
+      if (( value == 0 )); then
+        echo "Repeat disabled (edge-triggered only)."
+      else
+        echo "Repeat set to ${value} minute(s)."
+      fi
+      ;;
     "")
-      echo "error: missing key. Use 'jojo set threshold <n>' or 'jojo set delay <n>'" >&2
+      echo "error: missing key. Valid keys: threshold, delay, repeat" >&2
       exit 1
       ;;
     *)
-      echo "error: unknown key '$key'. Valid keys: threshold, delay" >&2
+      echo "error: unknown key '$key'. Valid keys: threshold, delay, repeat" >&2
       exit 1
       ;;
   esac
@@ -267,23 +305,28 @@ cmd_get() {
   local key="${1:-}"
   case "$key" in
     ""|all)
-      printf 'threshold: %s%%\ndelay:     %s min\n' "$(get_threshold)" "$(get_delay)"
+      printf 'threshold: %s%%\ndelay:     %s min\nrepeat:    %s min\n' \
+             "$(get_threshold)" "$(get_delay)" "$(get_repeat)"
       ;;
     threshold) printf '%s%%\n' "$(get_threshold)" ;;
     delay)     printf '%s min\n' "$(get_delay)" ;;
-    *) echo "error: unknown key '$key'. Valid keys: threshold, delay" >&2; exit 1 ;;
+    repeat)    printf '%s min\n' "$(get_repeat)" ;;
+    *) echo "error: unknown key '$key'. Valid keys: threshold, delay, repeat" >&2; exit 1 ;;
   esac
 }
 
 cmd_status() {
-  local threshold delay usage state
+  local threshold delay repeat usage state line
   threshold=$(get_threshold)
   delay=$(get_delay)
+  repeat=$(get_repeat)
   usage=$(read_usage)
   state="OK"
-  [[ -f "$STATE_FILE" ]] && state=$(<"$STATE_FILE")
-  printf 'os:        %s\nscheduler: %s\nusage:     %s%%\nthreshold: %s%%\ndelay:     %s min\nstate:     %s\n' \
-         "$JOJO_OS" "$(scheduler_name)" "$usage" "$threshold" "$delay" "$state"
+  if [[ -f "$STATE_FILE" ]]; then
+    IFS= read -r line < "$STATE_FILE" && state="$line" || true
+  fi
+  printf 'os:        %s\nscheduler: %s\nusage:     %s%%\nthreshold: %s%%\ndelay:     %s min\nrepeat:    %s min\nstate:     %s\n' \
+         "$JOJO_OS" "$(scheduler_name)" "$usage" "$threshold" "$delay" "$repeat" "$state"
 }
 
 cmd_install() {
@@ -341,8 +384,9 @@ Commands:
   check                    Run the threshold check (default; called by scheduler)
   set threshold <percent>  Persist threshold (1-99). Example: jojo set threshold 80
   set delay <minutes>      Persist check interval (1-59). Example: jojo set delay 5
-  get [key]                Print a value (threshold|delay) or all if omitted
-  status                   Print os, scheduler, usage, threshold, delay, and state
+  set repeat <minutes>     Re-notify every N min while above threshold (0 disables)
+  get [key]                Print a value (threshold|delay|repeat) or all if omitted
+  status                   Print os, scheduler, usage, threshold, delay, repeat, state
   install                  Install to ~/.local/bin and register with the scheduler
   uninstall                Reverse install
   help                     Show this message
