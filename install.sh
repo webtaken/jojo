@@ -8,7 +8,14 @@ chmod +x "$SCRIPT_PATH"
 
 CRON_LINE="* * * * * $SCRIPT_PATH >/dev/null 2>&1"
 
-( crontab -l 2>/dev/null | grep -vF "$SCRIPT_PATH" ; echo "$CRON_LINE" ) | crontab -
+# `|| true` so a missing-crontab or no-match grep doesn't abort under pipefail
+existing="$(crontab -l 2>/dev/null | grep -vF "$SCRIPT_PATH" || true)"
+
+if [[ -n "$existing" ]]; then
+  printf '%s\n%s\n' "$existing" "$CRON_LINE" | crontab -
+else
+  printf '%s\n' "$CRON_LINE" | crontab -
+fi
 
 echo "Installed cron entry (runs every minute):"
 echo "  $CRON_LINE"

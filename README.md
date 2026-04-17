@@ -9,7 +9,16 @@ Desktop notification when Linux RAM usage crosses a threshold. Edge-triggered â€
 ./uninstall.sh    # removes the cron entry
 ```
 
-Default threshold is 80%. Override with an env var in the crontab line, e.g. `RAM_THRESHOLD=90`.
+### Configure the threshold
+
+```bash
+./ram-monitor.sh set 75     # persist threshold to 75%
+./ram-monitor.sh get        # show current threshold
+./ram-monitor.sh status     # show usage, threshold, state
+./ram-monitor.sh help       # list all commands
+```
+
+The persisted value is stored at `~/.config/ram-monitor/config`. Default is 80%. `RAM_THRESHOLD=<n>` as an env var overrides the persisted value for one-off runs.
 
 ## How it works
 
@@ -20,6 +29,6 @@ Default threshold is 80%. Override with an env var in the crontab line, e.g. `RA
 ## Test it manually
 
 ```bash
-RAM_THRESHOLD=1 ./ram-monitor.sh   # forces an ALERT notification
-RAM_THRESHOLD=99 ./ram-monitor.sh  # resets state back to OK
+RAM_THRESHOLD=1  ./ram-monitor.sh check   # forces an ALERT notification
+RAM_THRESHOLD=99 ./ram-monitor.sh check   # resets state back to OK
 ```
