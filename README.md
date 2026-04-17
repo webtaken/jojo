@@ -20,17 +20,25 @@ If `~/.local/bin` isn't on your `PATH`, the installer will tell you how to add i
 ## Usage
 
 ```bash
-jojo set threshold 75   # persist threshold (1-99, percent)
-jojo set delay 5        # persist check interval (1-59, minutes)
-jojo set repeat 15      # re-notify every N min while above threshold (0 disables)
-jojo get                # show all values
-jojo status             # show usage, threshold, delay, repeat, state
-jojo check              # run the check manually
-jojo uninstall          # remove binary and scheduler entry
-jojo help               # list all commands
+jojo set threshold 75       # persist threshold (1-99, percent)
+jojo set delay 5            # persist check interval (1-59, minutes)
+jojo set behaviour annoying # alert cadence while above threshold
+jojo get                    # show all values
+jojo status                 # show usage, threshold, delay, behaviour, state
+jojo check                  # run the check manually
+jojo uninstall              # remove binary and scheduler entry
+jojo help                   # list all commands
 ```
 
-Defaults: **threshold 80%**, **delay 1 minute**, **repeat 10 minutes**. Changing `delay` auto-updates your scheduler entry. Set `repeat 0` to restore edge-only behavior (one notification per crossing).
+### Behaviour modes
+
+| Mode | Emoji | What it does |
+|------|-------|--------------|
+| `annoying` | 🚨 | Fires on every check while above threshold — relentless |
+| `casual`   | 🙂 | Fires on crossing, then every 10 minutes while high *(default)* |
+| `chill`    | 😎 | Fires once per crossing, then silent until RAM drops back |
+
+Defaults: **threshold 80%**, **delay 1 minute**, **behaviour `casual`**. Changing `delay` auto-updates your scheduler entry.
 
 One-off override: `RAM_THRESHOLD=1 jojo check`.
 

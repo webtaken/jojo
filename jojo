@@ -9,7 +9,8 @@ DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/jojo"
 SOUND_FILE="fahhh.mp3"
 DEFAULT_THRESHOLD=80
 DEFAULT_DELAY=1
-DEFAULT_REPEAT=10
+DEFAULT_BEHAVIOUR="casual"
+CASUAL_REPEAT_SECONDS=$((10 * 60))
 INSTALL_DIR="$HOME/.local/bin"
 INSTALL_PATH="$INSTALL_DIR/jojo"
 LAUNCHD_LABEL="com.webtaken.jojo"
@@ -62,26 +63,35 @@ get_delay() {
   read_config_value DELAY_MINUTES "$DEFAULT_DELAY"
 }
 
-get_repeat() {
-  read_config_value REPEAT_MINUTES "$DEFAULT_REPEAT"
+get_behaviour() {
+  read_config_value BEHAVIOUR "$DEFAULT_BEHAVIOUR"
+}
+
+behaviour_emoji() {
+  case "$1" in
+    annoying) echo "🚨" ;;
+    casual)   echo "🙂" ;;
+    chill)    echo "😎" ;;
+    *)        echo "❓" ;;
+  esac
 }
 
 write_config() {
   local key="$1" value="$2"
-  local t d r
+  local t d b
   t=$(read_config_value THRESHOLD "$DEFAULT_THRESHOLD")
   d=$(read_config_value DELAY_MINUTES "$DEFAULT_DELAY")
-  r=$(read_config_value REPEAT_MINUTES "$DEFAULT_REPEAT")
+  b=$(read_config_value BEHAVIOUR "$DEFAULT_BEHAVIOUR")
   case "$key" in
-    THRESHOLD)      t="$value" ;;
-    DELAY_MINUTES)  d="$value" ;;
-    REPEAT_MINUTES) r="$value" ;;
+    THRESHOLD)     t="$value" ;;
+    DELAY_MINUTES) d="$value" ;;
+    BEHAVIOUR)     b="$value" ;;
   esac
   mkdir -p "$CONFIG_DIR"
   {
-    printf 'THRESHOLD=%s\n'      "$t"
-    printf 'DELAY_MINUTES=%s\n'  "$d"
-    printf 'REPEAT_MINUTES=%s\n' "$r"
+    printf 'THRESHOLD=%s\n'     "$t"
+    printf 'DELAY_MINUTES=%s\n' "$d"
+    printf 'BEHAVIOUR=%s\n'     "$b"
   } > "$CONFIG_FILE"
 }
 
@@ -214,9 +224,9 @@ remove_scheduler() {
 }
 
 cmd_check() {
-  local threshold repeat usage prev_state last_alert new_state now should_notify line
+  local threshold behaviour usage prev_state last_alert new_state now should_notify line
   threshold=$(get_threshold)
-  repeat=$(get_repeat)
+  behaviour=$(get_behaviour)
   mkdir -p "$STATE_DIR"
   usage=$(read_usage)
   now=$(date +%s)
@@ -240,8 +250,16 @@ cmd_check() {
   if [[ "$new_state" == "ALERT" ]]; then
     if [[ "$prev_state" != "ALERT" ]]; then
       should_notify=1
-    elif (( repeat > 0 )) && (( now - last_alert >= repeat * 60 )); then
-      should_notify=1
+    else
+      case "$behaviour" in
+        annoying) should_notify=1 ;;
+        casual)
+          if (( now - last_alert >= CASUAL_REPEAT_SECONDS )); then
+            should_notify=1
+          fi
+          ;;
+        chill) should_notify=0 ;;
+      esac
     fi
   fi
 
@@ -278,55 +296,56 @@ cmd_set() {
         echo "$(scheduler_name) entry updated."
       fi
       ;;
-    repeat)
-      if [[ ! "$value" =~ ^[0-9]+$ ]] || (( value > 1440 )); then
-        echo "error: repeat must be an integer 0-1440 (minutes; 0 disables)" >&2
-        exit 1
-      fi
-      write_config REPEAT_MINUTES "$value"
-      if (( value == 0 )); then
-        echo "Repeat disabled (edge-triggered only)."
-      else
-        echo "Repeat set to ${value} minute(s)."
-      fi
+    behaviour)
+      case "$value" in
+        annoying|casual|chill) ;;
+        *)
+          echo "error: behaviour must be one of: annoying, casual, chill" >&2
+          exit 1
+          ;;
+      esac
+      write_config BEHAVIOUR "$value"
+      echo "$(behaviour_emoji "$value") Behaviour set to ${value}"
       ;;
     "")
-      echo "error: missing key. Valid keys: threshold, delay, repeat" >&2
+      echo "error: missing key. Valid keys: threshold, delay, behaviour" >&2
       exit 1
       ;;
     *)
-      echo "error: unknown key '$key'. Valid keys: threshold, delay, repeat" >&2
+      echo "error: unknown key '$key'. Valid keys: threshold, delay, behaviour" >&2
       exit 1
       ;;
   esac
 }
 
 cmd_get() {
-  local key="${1:-}"
+  local key="${1:-}" b
+  b=$(get_behaviour)
   case "$key" in
     ""|all)
-      printf 'threshold: %s%%\ndelay:     %s min\nrepeat:    %s min\n' \
-             "$(get_threshold)" "$(get_delay)" "$(get_repeat)"
+      printf 'threshold: %s%%\ndelay:     %s min\nbehaviour: %s %s\n' \
+             "$(get_threshold)" "$(get_delay)" "$(behaviour_emoji "$b")" "$b"
       ;;
     threshold) printf '%s%%\n' "$(get_threshold)" ;;
     delay)     printf '%s min\n' "$(get_delay)" ;;
-    repeat)    printf '%s min\n' "$(get_repeat)" ;;
-    *) echo "error: unknown key '$key'. Valid keys: threshold, delay, repeat" >&2; exit 1 ;;
+    behaviour) printf '%s %s\n' "$(behaviour_emoji "$b")" "$b" ;;
+    *) echo "error: unknown key '$key'. Valid keys: threshold, delay, behaviour" >&2; exit 1 ;;
   esac
 }
 
 cmd_status() {
-  local threshold delay repeat usage state line
+  local threshold delay behaviour usage state line
   threshold=$(get_threshold)
   delay=$(get_delay)
-  repeat=$(get_repeat)
+  behaviour=$(get_behaviour)
   usage=$(read_usage)
   state="OK"
   if [[ -f "$STATE_FILE" ]]; then
     IFS= read -r line < "$STATE_FILE" && state="$line" || true
   fi
-  printf 'os:        %s\nscheduler: %s\nusage:     %s%%\nthreshold: %s%%\ndelay:     %s min\nrepeat:    %s min\nstate:     %s\n' \
-         "$JOJO_OS" "$(scheduler_name)" "$usage" "$threshold" "$delay" "$repeat" "$state"
+  printf 'os:        %s\nscheduler: %s\nusage:     %s%%\nthreshold: %s%%\ndelay:     %s min\nbehaviour: %s %s\nstate:     %s\n' \
+         "$JOJO_OS" "$(scheduler_name)" "$usage" "$threshold" "$delay" \
+         "$(behaviour_emoji "$behaviour")" "$behaviour" "$state"
 }
 
 cmd_install() {
@@ -384,9 +403,9 @@ Commands:
   check                    Run the threshold check (default; called by scheduler)
   set threshold <percent>  Persist threshold (1-99). Example: jojo set threshold 80
   set delay <minutes>      Persist check interval (1-59). Example: jojo set delay 5
-  set repeat <minutes>     Re-notify every N min while above threshold (0 disables)
-  get [key]                Print a value (threshold|delay|repeat) or all if omitted
-  status                   Print os, scheduler, usage, threshold, delay, repeat, state
+  set behaviour <mode>     annoying 🚨 | casual 🙂 | chill 😎
+  get [key]                Print a value (threshold|delay|behaviour) or all if omitted
+  status                   Print os, scheduler, usage, threshold, delay, behaviour, state
   install                  Install to ~/.local/bin and register with the scheduler
   uninstall                Reverse install
   help                     Show this message
