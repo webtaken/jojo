@@ -120,7 +120,7 @@ send_notification() {
   if [[ "$JOJO_OS" == "linux" ]]; then
     export DISPLAY="${DISPLAY:-:0}"
     export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}"
-    notify-send -u critical "RAM high" "Memory usage at ${usage}% (threshold ${threshold}%)"
+    notify-send -u normal "RAM high" "Memory usage at ${usage}% (threshold ${threshold}%)"
   else
     osascript -e "display notification \"Memory usage at ${usage}% (threshold ${threshold}%)\" with title \"RAM high\""
   fi
